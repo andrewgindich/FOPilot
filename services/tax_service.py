@@ -43,7 +43,7 @@ async def create_mono_payment(payment_data: PaymentRequest) -> PaymentResponse:
         "merchantPaymInfo": {
             "destination": payment_data.destination
         },
-        "redirectUrl": "https://github.com/andrewgindich/FOPilot"  # Заміни на сторінку успішної оплати
+        "redirectUrl": "https://github.com/andrewgindich/FOPilot"
     }
 
     async with httpx.AsyncClient() as client:
