@@ -20,5 +20,7 @@ Thumbs.db
 .evn
 *.env
 
+*.core/
+*.llm/
 
 fopilot-e21f3-firebase-adminsdk-fbsvc-d81a9f131c.json
