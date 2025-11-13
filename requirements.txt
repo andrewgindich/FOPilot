@@ -6,3 +6,5 @@ firebase-admin
 replicate
 httpx
 python-dotenv
+google-generativeai
+pydantic[email]
