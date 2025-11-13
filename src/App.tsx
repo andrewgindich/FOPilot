@@ -53,6 +53,13 @@ import {
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
+// ===================================
+// ІМПОРТУЄМО НАШІ НОВІ СЕРВІСИ
+// ===================================
+import * as authService from './services/authService';
+import { sendMessageToApi } from './services/chatService';
+// (Тут також будуть імпорти для taxService тощо)
+
 interface Message {
   id: number;
   text: string;
@@ -92,14 +99,17 @@ export default function App() {
   });
 
   // Auth state
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
+  // Перевіряємо, чи є токен при завантаженні
+  const [isAuthenticated, setIsAuthenticated] = useState(!!authService.getToken()); 
+  const [authError, setAuthError] = useState(''); // Стан для відображення помилок
+  // ...
   const [isLoginScreen, setIsLoginScreen] = useState(false);
   const [isRegisterScreen, setIsRegisterScreen] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   
   // Registration state
-  const [registerName, setRegisterName] = useState('');
+const [registerName, setRegisterName] = useState('');
   const [registerEmail, setRegisterEmail] = useState('');
   const [registerPassword, setRegisterPassword] = useState('');
   const [registerPasswordConfirm, setRegisterPasswordConfirm] = useState('');
@@ -161,6 +171,9 @@ export default function App() {
     scrollToBottom();
   }, [messages]);
 
+  // ===================================
+  // ОНОВЛЮЄМО ЛОГІКУ ЧАТУ
+  // ===================================
   const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
 
@@ -175,28 +188,36 @@ export default function App() {
     setInputMessage('');
     setIsTyping(true);
 
-    // Симуляція відповіді AI
-    setTimeout(() => {
-      const aiResponses = [
-        "Для реєстрації ФОП вам потрібно подати заяву до податкової служби. Можу детальніше розповісти про процедуру.",
-        "Ставка єдиного податку залежить від групи ФОП. Перша група - до 5% прожиткового мінімуму, друга - до 20%, третя - до 5% від доходу.",
-        "Книгу обліку доходів та витрат потрібно вести щоденно. Записуйте всі операції з документальним підтвердженням.",
-        "Звітність подається до 20 числа наступного місяця. Не забувайте про своєчасну подачу декларації.",
-        "Рекомендую відкрити окремий рахунок для бізнесу та вести детальний облік усіх операцій."
-      ];
-      
-      const randomResponse = aiResponses[Math.floor(Math.random() * aiResponses.length)];
-      
+    // ===================================
+    // ВИКЛИКАЄМО РЕАЛЬНИЙ БЕКЕНД
+    // ===================================
+    try {
+      // Викликаємо наш новий chatService
+      const aiResponseText = await sendMessageToApi(userMessage.text);
+
       const aiMessage: Message = {
         id: Date.now() + 1,
-        text: randomResponse,
+        text: aiResponseText,
         isUser: false,
         timestamp: new Date()
       };
-
       setMessages(prev => [...prev, aiMessage]);
+    
+    } catch (error) {
+      const errorMessage: Message = {
+        id: Date.now() + 1,
+        text: "Вибачте, сталася помилка з'єднання. Спробуйте пізніше.",
+        isUser: false,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
+    // ===================================
+    // БЛОК З setTimeout ВИДАЛЕНО
+    // ===================================
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -331,26 +352,43 @@ export default function App() {
     }
   };
 
+   // ===================================
+  // ОНОВЛЮЄМО ЛОГІКУ АВТЕНТИФІКАЦІЇ
+  // ===================================
   const handleLogout = () => {
+    authService.logout(); // Викликаємо наш сервіс
     setIsAuthenticated(false);
     setIsLoginScreen(true);
     setActiveMenuItem('Головна');
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthError(''); // Скидаємо помилку
     if (loginEmail && loginPassword) {
-      setIsAuthenticated(true);
-      setIsLoginScreen(false);
-      setLoginEmail('');
-      setLoginPassword('');
+      try {
+        await authService.login(loginEmail, loginPassword);
+        setIsAuthenticated(true);
+        setIsLoginScreen(false);
+        setLoginEmail('');
+        setLoginPassword('');
+      } catch (error) {
+        setAuthError('Не вдалося увійти. Перевірте пошту або пароль.');
+        console.error(error);
+      }
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthError('');
     if (registerName && registerEmail && registerPassword && registerPasswordConfirm && agreeTerms) {
-      if (registerPassword === registerPasswordConfirm) {
+      if (registerPassword !== registerPasswordConfirm) {
+        setAuthError('Паролі не співпадають!');
+        return;
+      }
+      try {
+        await authService.register(registerName, registerEmail, registerPassword);
         setIsAuthenticated(true);
         setIsRegisterScreen(false);
         setIsLoginScreen(false);
@@ -360,8 +398,9 @@ export default function App() {
         setRegisterPassword('');
         setRegisterPasswordConfirm('');
         setAgreeTerms(false);
-      } else {
-        alert('Паролі не співпадають!');
+      } catch (error) {
+        setAuthError('Не вдалося зареєструватися. Можливо, цей email вже зайнятий.');
+        console.error(error);
       }
     }
   };
@@ -369,12 +408,15 @@ export default function App() {
   const showLoginScreen = () => {
     setIsLoginScreen(true);
     setIsRegisterScreen(false);
+    setAuthError('');
   };
 
   const showRegisterScreen = () => {
     setIsRegisterScreen(true);
     setIsLoginScreen(false);
+    setAuthError('');
   };
+
 
   const handleShowNewReceipt = () => {
     setShowNewReceipt(true);
@@ -415,7 +457,7 @@ export default function App() {
   };
 
   // Show auth screens if not authenticated or explicitly requested
-  if (!isAuthenticated || isLoginScreen || isRegisterScreen) {
+   if (!isAuthenticated || isLoginScreen || isRegisterScreen) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         {/* Theme Toggle for Login Screen */}
@@ -446,10 +488,18 @@ export default function App() {
             </p>
           </CardHeader>
           
-          <CardContent className="space-y-6">
+         <CardContent className="space-y-6">
+          {/* =================================== */}
+            {/* ВІДОБРАЖЕННЯ ПОМИЛКИ */}
+            {/* =================================== */}
+            {authError && (
+              <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-center">
+                <p>{authError}</p>
+              </div>
+            )}
             {isRegisterScreen ? (
               /* Registration Form */
-              <form onSubmit={handleRegister} className="space-y-4">
+      <form onSubmit={handleRegister} className="space-y-4">
                 <div className="space-y-2">
                   <Input
                     type="text"
@@ -498,7 +548,7 @@ export default function App() {
                   <Checkbox 
                     id="terms" 
                     checked={agreeTerms}
-                    onCheckedChange={(checked) => setAgreeTerms(checked as boolean)}
+                    onCheckedChange={(checked: boolean) => setAgreeTerms(checked as boolean)}
                   />
                   <label htmlFor="terms" className="text-muted-foreground leading-none">
                     Я погоджуюся з{' '}
@@ -509,18 +559,18 @@ export default function App() {
                 </div>
 
                 <div className="space-y-3 pt-2">
-                  <Button 
-                    type="submit" 
-                    className="w-full h-12 rounded-lg"
-                    disabled={!registerName || !registerEmail || !registerPassword || !registerPasswordConfirm || !agreeTerms}
-                  >
-                    Зареєструватися
-                  </Button>
+                <Button 
+                  type="submit" 
+                  className="w-full h-12 rounded-lg"
+                  disabled={!registerName || !registerEmail || !registerPassword || !registerPasswordConfirm || !agreeTerms}
+                >
+                  Зареєструватися
+                </Button>
                 </div>
               </form>
             ) : (
               /* Login Form */
-              <form onSubmit={handleLogin} className="space-y-4">
+         <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
                   <Input
                     type="email"
