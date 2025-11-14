@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from firebase_admin.auth import EmailAlreadyExistsError
 
-from models.user import UserCreate, UserInDB
+from models.user import UserCreate, UserInDB, UserUpdate
 from services import auth_service
 from core.firebase import auth_client
 from api.deps import get_current_user
@@ -61,3 +61,25 @@ def get_user_me(current_user: dict = Depends(get_current_user)):
             detail="User profile not found in Firestore"
         )
     return user_profile
+
+@router.put("/me", response_model=UserInDB)
+def update_user_me(
+    user_data: UserUpdate, # 1. Принимаем 'first_name', 'last_name'
+    current_user: dict = Depends(get_current_user) # 2. Проверяем, что пользователь "вошел"
+):
+    """
+    Обновляет имя и фамилию текущего пользователя.
+    """
+    uid = current_user.get("uid")
+    
+    # 3. Вызываем наш новый "мозг"
+    updated_profile = auth_service.update_user_profile(uid, user_data)
+    
+    if updated_profile is None:
+         raise HTTPException(
+            status_code=404, 
+            detail="Не удалось найти профиль после обновления."
+        )
+    
+    # 4. Возвращаем обновленный профиль фронтенду
+    return updated_profile

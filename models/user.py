@@ -14,3 +14,7 @@ class UserInDB(UserBase):
     uid: str
     fop_group: int = 3
     tax_rate: float = 0.05
+
+class UserUpdate(BaseModel):
+    first_name: str
+    last_name: str
