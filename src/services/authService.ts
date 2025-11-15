@@ -1,11 +1,13 @@
-import { auth } from '../firebase'; // Імпорт з локального файла налаштувань Firebase
+import { auth } from '../firebase'; // Тепер цей імпорт ПРАВИЛЬНИЙ
 import {
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut
+  signOut,
+  // Нам більше не потрібен createUserWithEmailAndPassword тут
 } from 'firebase/auth';
 
-const API_URL = 'http://localhost:8000'; // Базова адреса API
+// ↓↓↓ ВИПРАВЛЕННЯ №1: Читаємо API_URL з .env файлу (Vite) ↓↓↓
+// Це виправить помилку 404 Not Found
+const API_URL = import.meta.env.VITE_API_URL; 
 
 // Збереження токена (можна використовувати sessionStorage)
 export const saveToken = (token: string) => {
@@ -22,7 +24,8 @@ export const removeToken = () => {
   localStorage.removeItem('firebase_token');
 };
 
-// Функція логіну
+// Функція логіну (без змін, вона правильна)
+// Вона використовує Firebase НАПРЯМУ, щоб увійти
 export const login = async (email: string, password: string): Promise<string> => {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -35,51 +38,55 @@ export const login = async (email: string, password: string): Promise<string> =>
   }
 };
 
-// Функція виходу
+// Функція виходу (без змін, вона правильна)
 export const logout = async () => {
   await signOut(auth);
   removeToken();
 };
 
-// Функція реєстрації
-// Вона робить 2 речі:
-// 1. Створює користувача в Firebase (щоб отримати UID)
-// 2. Реєструє користувача у вашому бекенді (щоб створити профіль в Firestore)
+// ↓↓↓ ВИПРАВЛЕННЯ №2: ПОВНІСТЮ НОВА ЛОГІКА РЕЄСТРАЦІЇ ↓↓↓
+// Тепер фронтенд не заважає бекенду.
+// Він ТІЛЬКИ викликає наш бекенд-ендпоінт.
 export const register = async (name: string, email: string, password: string) => {
   try {
-    // 1. Створюємо користувача в Firebase
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-
-    // 2. Викликаємо ваш Python-ендпоінт /auth/register
-    // Примітка: ваш Python очікує 'first_name' і 'last_name', а у вас тільки 'name'
-    // Я розділю 'name' на дві частини для прикладу
+    // Розділяємо ім'я (логіка з твого файлу)
     const [firstName, lastName] = name.split(' ');
     
+    // Крок 1: Фронтенд ТІЛЬКИ викликає наш бекенд
+    // API_URL тепер "http://127.0.0.1:8000/api/v1", тому шлях буде правильним
     const response = await fetch(`${API_URL}/auth/register`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        email: user.email,
-        password: password, // Так, ми відправляємо пароль знову
+        email: email,
+        password: password, 
         first_name: firstName || name,
         last_name: lastName || ''
       })
     });
 
     if (!response.ok) {
-      // Якщо в нашому бекенді сталася помилка, ми маємо видалити користувача з Firebase
-      await user.delete();
-      throw new Error('Помилка реєстрації на нашому сервері.');
+      // Якщо бекенд повернув помилку (наприклад, 400 "Email already exists")
+      // Ми беремо текст помилки з бекенду
+      const errorData = await response.json();
+      // І кидаємо її, щоб фронтенд міг її показати
+      throw new Error(errorData.detail || 'Помилка реєстрації на нашому сервері.');
     }
 
-    // Якщо все добре, автоматично логінимо користувача
+    // Крок 2: Якщо бекенд відповів 201 Created, ми автоматично логінимо користувача
+    // (використовуючи нашу КЛІЄНТСЬКУ функцію логіну)
     return await login(email, password);
 
   } catch (error) {
     console.error("Помилка реєстрації:", error);
-    throw error;
+    
+    // Перекидаємо помилку, щоб компонент React міг її "зловити"
+    if (error instanceof Error) {
+        throw error;
+    }
+    // Для інших типів помилок
+    throw new Error(String(error));
   }
 };
